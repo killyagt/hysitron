@@ -9,6 +9,7 @@ public class AutomationHost {
     private Socket socket;
     private DataOutputStream out;
     private DataInputStream in;
+    private List<TestResult> summaryData = new ArrayList<>();
 
     public void connect(String ip, int port) throws IOException {
         socket = new Socket(ip, port);
@@ -43,6 +44,8 @@ public class AutomationHost {
         // ---------------------------------------------------------
         // 3. 核心批量循环 (针对清单里的每一个点)
         // ---------------------------------------------------------
+        // 每次开始新任务前，清空记事本
+        summaryData.clear();
         for (int i = 0; i < pointList.size(); i++) {
             double[] currentPoint = pointList.get(i);
             double targetX = currentPoint[0];
@@ -88,7 +91,7 @@ public class AutomationHost {
                 else if (status.type == 27) {
                     // ID 27: HOST_OPERATIONCOMPLETED
                     System.out.println("状态报告：当前点位任务已完成。");
-                    readResultData("Result_Batch_Point.txt");
+                    readResultData("Result_Batch_Point.txt", targetX, targetY);
                     isPointRunning = false; // 结束内层循环，进入下一个点
                 }
                 else if (status.type == 12) {
@@ -104,6 +107,7 @@ public class AutomationHost {
         // ---------------------------------------------------------
         sendMessage(27, "All Batch Jobs Completed");
         System.out.println("\n>>> [任务汇总] 所有批量测试点已执行完毕。安全退出。");
+        saveSummaryToCSV();
     }
 
 
@@ -147,28 +151,76 @@ public class AutomationHost {
 
 
     // 读取最新的结果文件
-    public void readResultData(String filename) {
+    // 修改后的读取方法：接收坐标信息，以便一起存下来
+    public void readResultData(String filename, double x, double y) {
         File file = new File(filename);
-        if (!file.exists()) {
-            System.out.println(">>> 警告：未找到结果文件，可能分析未开启。");
-            return;
-        }
+        if (!file.exists()) return;
 
         try {
             BufferedReader reader = new BufferedReader(new FileReader(file));
             String line;
-            System.out.println("   --- [获取实验结果] ---");
+
+            // 临时变量，用来存从文件里读到的值
+            String name = "Unknown";
+            double h = 0.0;
+            double m = 0.0;
+
             while ((line = reader.readLine()) != null) {
-                System.out.println("   " + line);
+                // 解析逻辑：根据模拟器生成的文件格式来拆解
+                // 文件样例：
+                // TestName: Batch_Point
+                // Hardness: 11.23 GPa
+
+                if (line.startsWith("TestName:")) {
+                    name = line.split(":")[1].trim();
+                }
+                else if (line.startsWith("Hardness:")) {
+                    // 取冒号后面的部分，再把 "GPa" 删掉，最后转成数字
+                    String val = line.split(":")[1].replace("GPa", "").trim();
+                    h = Double.parseDouble(val);
+                }
+                else if (line.startsWith("Modulus:")) {
+                    String val = line.split(":")[1].replace("GPa", "").trim();
+                    m = Double.parseDouble(val);
+                }
             }
             reader.close();
-            // 读完后删除模拟文件，保持清洁
-            file.delete();
-        } catch (IOException e) {
+            file.delete(); // 读完删除
+
+            // 把解析出来的数据存进记事本 ---
+            TestResult result = new TestResult(name, x, y, h, m);
+            summaryData.add(result);
+            System.out.println(">>> [数据已记录] " + name + " -> H=" + h);
+
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+
+
+    // 在所有任务结束后调用，生成总表
+    public void saveSummaryToCSV() {
+        try {
+            String filename = "Final_Report.csv";
+            PrintWriter writer = new PrintWriter(new FileWriter(filename));
+
+            // 写表头
+            writer.println("TestName,X,Y,Hardness(GPa),Modulus(GPa)");
+
+            // 遍历记事本，写每一行
+            for (TestResult res : summaryData) {
+                writer.println(res.toCSVString());
+            }
+
+            writer.close();
+            System.out.println("\n========================================");
+            System.out.println(" 汇总报告已生成: " + filename);
+            System.out.println("========================================");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     private void sendMessage(int type, String content) throws IOException {
         TriboMessage msg = new TriboMessage(type, content);
