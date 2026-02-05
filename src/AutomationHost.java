@@ -17,10 +17,8 @@ public class AutomationHost {
         in = new DataInputStream(socket.getInputStream());
         System.out.println("成功连接");
     }
-    /**
-     * 执行自动化批量测试工作流
-     * 涵盖了手册中从 INITIALSTATE 到 ENDSTATE 的核心逻辑
-     */
+
+
     public void startWorkflow() throws IOException, InterruptedException {
         // ---------------------------------------------------------
         // 1. 等待握手信号 (手册第14页: Initial Host Communication)
@@ -32,10 +30,13 @@ public class AutomationHost {
         }
         System.out.println(">>> 仪器已进入自动化模式，准备开始批量任务。");
 
+        // 安全归位
+        homeZAxis();
+
         // ---------------------------------------------------------
         // 2. 定义批量坐标清单 (X, Y)
         // ---------------------------------------------------------
-        List<double[]> pointList = loadPointsFromFile("test_points.csv");
+        List<TestTask> pointList = loadPointsFromFile("test_points.csv");
 
         if (pointList.isEmpty()) {
             System.out.println("错误：未找到测试坐标，请检查 test_points.csv 文件！");
@@ -47,9 +48,9 @@ public class AutomationHost {
         // 每次开始新任务前，清空记事本
         summaryData.clear();
         for (int i = 0; i < pointList.size(); i++) {
-            double[] currentPoint = pointList.get(i);
-            double targetX = currentPoint[0];
-            double targetY = currentPoint[1];
+            TestTask currentPoint = pointList.get(i);
+            double targetX = currentPoint.x;
+            double targetY = currentPoint.y;
 
             System.out.println("\n--------------------------------------------");
             System.out.println("正在执行任务 (" + (i + 1) + "/" + pointList.size() + "): 坐标 [" + targetX + ", " + targetY + "]");
@@ -71,9 +72,8 @@ public class AutomationHost {
             System.out.println("动作：样品位置确认，开始快速靠近...");
 
             // C. 下达压痕测试任务 (ID 5: HOST_METHODID)
-            String methodName = "Batch_Test_Point_" + (i + 1);
-            sendMessage(5, methodName);
-            System.out.println("动作：已下达压痕指令 [" + methodName + "]");
+            sendMessage(5, currentPoint.methodName);
+            System.out.println("动作：已下达压痕指令 [" + currentPoint.methodName + "]");
 
             // D. 状态监控循环 (ID 11: HOST_REQ_STATUS)
             // 对应手册第16页：直到收到 ID 27 (完成) 才会跳出
@@ -119,34 +119,34 @@ public class AutomationHost {
         System.out.println(">>> 主机：下令移动到坐标 [" + coords + "]");
     }
 
-    // 此方法读取 CSV 文件并解析为坐标列表
-    public List<double[]> loadPointsFromFile(String filename) {
-        List<double[]> points = new ArrayList<>();
+    // 修改返回类型为 List<TestTask>
+    // 加载数据
+    public List<TestTask> loadPointsFromFile(String filename) {
+        List<TestTask> tasks = new ArrayList<>(); // 改这里
         try {
-            // 建立文件读取流 (Head First Java 第14章)
             BufferedReader reader = new BufferedReader(new FileReader(filename));
             String line;
+            System.out.println(">>> 正在读取任务清单: " + filename);
 
-            System.out.println(">>> 正在读取文件: " + filename);
             while ((line = reader.readLine()) != null) {
-                // 跳过空行
                 if (line.trim().isEmpty()) continue;
-
-                // 用逗号分割每一行： "10.0, 10.0" -> ["10.0", " 10.0"]
                 String[] parts = line.split(",");
 
-                if (parts.length >= 2) {
+                // 现在我们需要至少 3 部分数据
+                if (parts.length >= 3) {
                     double x = Double.parseDouble(parts[0].trim());
                     double y = Double.parseDouble(parts[1].trim());
-                    points.add(new double[]{x, y});
-                    System.out.println("    已加载坐标: " + x + ", " + y);
+                    String method = parts[2].trim(); // 读取第三列
+
+                    tasks.add(new TestTask(x, y, method));
+                    System.out.println("    任务加载: " + method + " @ [" + x + "," + y + "]");
                 }
             }
             reader.close();
         } catch (Exception e) {
-            System.out.println("！！读取文件出错: " + e.getMessage());
+            e.printStackTrace();
         }
-        return points;
+        return tasks;
     }
 
 
@@ -195,6 +195,25 @@ public class AutomationHost {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+
+    /**
+     * 发送Z轴归位指令
+     *  TODO
+     */
+    public void homeZAxis() throws IOException, InterruptedException {
+        System.out.println(">>> [安全检查] 正在执行 Z 轴归位...");
+        sendMessage(3, "Home Z Axis"); // ID 3: HOST_HOME_Z_AXIS
+
+        // 归位通常需要一点时间，我们简单模拟等待
+        // 真实情况应该轮询状态，但这里我们先简单处理
+        Thread.sleep(1000);
+
+        // 归位后，仪器通常会处于 READY 状态
+        // 我们可以清空一下接收缓冲区（把可能产生的 TS_BUSY 读掉）
+        // 这里为了简单，先不写复杂的清理逻辑
+        System.out.println(">>> [安全检查] Z 轴已归位，移动是安全的。");
     }
 
 

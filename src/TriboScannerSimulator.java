@@ -66,6 +66,10 @@ public class TriboScannerSimulator {
                 // 模拟移动需要一点时间
                 Thread.sleep(1000);
                 System.out.println("仪器：移动已到位。");
+            }else if (type == 3) {
+                System.out.println("仪器：收到 Z 轴归位指令。正在抬起探针...");
+                // 模拟回传一个 BUSY 状态，或者什么都不回（视具体固件而定）
+                // 这里假设它动作很快，不回传特殊包，只在控制台打印
             }
         }
     }
