@@ -66,13 +66,12 @@ public class AutomationHost {
             Thread.sleep(1000);
 
             // B. 确认样品状态 (ID 2: HOST_SAMPLELOADED)
-            // 告诉仪器：我已经把你挪到指定位置了，你可以准备压了
             sendMessage(2, "Sample In Position");
             receiveMessage(); // 接收 ID 23 (TS_SAMPLE_APPROACH_STATUS)
             System.out.println("动作：样品位置确认，开始快速靠近...");
 
             // C. 下达压痕测试任务 (ID 5: HOST_METHODID)
-            sendMessage(5, currentPoint.methodName);
+            sendMessage(5, currentPoint.methodName);  // 7.1 Prerequisites 需要操作员提前在仪器创建对应测试方法
             System.out.println("动作：已下达压痕指令 [" + currentPoint.methodName + "]");
 
             // D. 状态监控循环 (ID 11: HOST_REQ_STATUS)
@@ -199,21 +198,39 @@ public class AutomationHost {
 
 
     /**
-     * 发送Z轴归位指令
-     *  TODO
+     * 发送 Z 轴归位指令并轮询直到完成
+     * 参考手册第 16 页 (Status Request Handling) 和 第 21 页 (HOMEZAXIS)
      */
     public void homeZAxis() throws IOException, InterruptedException {
-        System.out.println(">>> [安全检查] 正在执行 Z 轴归位...");
-        sendMessage(3, "Home Z Axis"); // ID 3: HOST_HOME_Z_AXIS
+        System.out.println(">>> [安全检查] 正在启动 Z 轴归位...");
+        sendMessage(3, "Home Z Axis"); // 发送归位指令 ID 3
 
-        // 归位通常需要一点时间，我们简单模拟等待
-        // 真实情况应该轮询状态，但这里我们先简单处理
-        Thread.sleep(1000);
+        boolean isHoming = true;
+        while (isHoming) {
+            // 1. 稍微等一下再问，给硬件一点反应时间
+            Thread.sleep(1000);
 
-        // 归位后，仪器通常会处于 READY 状态
-        // 我们可以清空一下接收缓冲区（把可能产生的 TS_BUSY 读掉）
-        // 这里为了简单，先不写复杂的清理逻辑
-        System.out.println(">>> [安全检查] Z 轴已归位，移动是安全的。");
+            // 2. 发送状态查询 (ID 11)
+            sendMessage(11, "Is Homing Done?");
+            TriboMessage status = receiveMessage();
+
+            // 3. 根据返回的消息 ID 判断状态
+            if (status.type == 1) {
+                // 根据手册第 18/21 页，HOMEZAXIS 完成后会回到 INITIALSTATE，发送 ID 1
+                System.out.println(">>> [安全检查] 接收到 ID 1: Z 轴已成功归位。");
+                isHoming = false; // 退出循环
+            }
+            else if (status.type == 4 || status.type == 22) {
+                // ID 4 (Busy) 或 ID 22 (Job Status) 表示还在动
+                System.out.println(">>> [安全检查] 仪器忙碌中: " + status.message);
+            }
+            else if (status.type == 12) {
+                // ID 12 (Error)
+                System.out.println("!!! [紧急停止] 归位过程中发生错误！");
+                throw new RuntimeException("Z-Axis Homing Failed");
+            }
+        }
+        System.out.println(">>> [安全检查] 归位验证通过，载物台移动现在是安全的。");
     }
 
 

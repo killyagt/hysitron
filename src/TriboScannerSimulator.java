@@ -14,6 +14,9 @@ public class TriboScannerSimulator {
         DataOutputStream out = new DataOutputStream(client.getOutputStream());
         DataInputStream in = new DataInputStream(client.getInputStream());
 
+        int homingCounter = 0;
+        boolean isHomingActive = false;
+
         // 模拟步骤 1: 按照手册第14页，连接后主动发送 "Ready to Load Sample" (ID: 1)
         TriboMessage ready = new TriboMessage(1, "Triboscan in Loading Position");
         out.write(ready.toBytes());
@@ -43,18 +46,32 @@ public class TriboScannerSimulator {
                 // 此时不回信，现实中机械臂开始操作，等主机来问状态
             }
             else if (type == 11) { // 收到：HOST_REQ_STATUS (状态查询)
-                if (busyCount < 3) {
-                    // 模拟前3次查询都返回：我很忙 (ID 4: TS_BUSY)
-                    out.write(new TriboMessage(4, "TS_BUSY: Indenting...").toBytes());
-                    busyCount++;
-                    System.out.println("仪器：正在工作 (" + busyCount + "/3)");
-                } else {
-                    // 第4次查询返回：全部完成 (ID 27: HOST_OPERATIONCOMPLETED)
-                    createMockResultFile("Batch_Point");
-                    out.write(new TriboMessage(27, "All operations completed").toBytes());
-                    System.out.println("仪器：报告任务已完成！");
-                    busyCount = 0; // 重置计数器
+                if(isHomingActive){
+                    if (homingCounter < 2) { // 模拟归位需要问 2 次的时间
+                        out.write(new TriboMessage(4, "TS_BUSY: Homing Z...").toBytes());
+                        homingCounter++;
+                    } else {
+                        // 归位完成，发送 ID 1 (TS_READYTOLOADSAMPLE)
+                        out.write(new TriboMessage(1, "Z-Axis Homed Ready").toBytes());
+                        isHomingActive = false;
+                        System.out.println("仪器：归位完成。");
+                    }
                 }
+                else{
+                    if (busyCount < 3) {
+                        // 模拟前3次查询都返回：仪器正在忙 (ID 4: TS_BUSY)
+                        out.write(new TriboMessage(4, "TS_BUSY: Indenting...").toBytes());
+                        busyCount++;
+                        System.out.println("仪器：正在工作 (" + busyCount + "/3)");
+                    } else {
+                        // 第4次查询返回：全部完成 (ID 27: HOST_OPERATIONCOMPLETED)
+                        createMockResultFile("Batch_Point");
+                        out.write(new TriboMessage(27, "All operations completed").toBytes());
+                        System.out.println("仪器：报告任务已完成！");
+                        busyCount = 0; // 重置计数器
+                    }
+                }
+
             }
             else if (type == 10) { // 收到：HOST_XYCOORDINATES
                 System.out.println("仪器：收到移动指令，目标坐标为 -> " + content);
@@ -67,9 +84,9 @@ public class TriboScannerSimulator {
                 Thread.sleep(1000);
                 System.out.println("仪器：移动已到位。");
             }else if (type == 3) {
-                System.out.println("仪器：收到 Z 轴归位指令。正在抬起探针...");
-                // 模拟回传一个 BUSY 状态，或者什么都不回（视具体固件而定）
-                // 这里假设它动作很快，不回传特殊包，只在控制台打印
+                System.out.println("仪器：收到归位指令，开始移动 Z 轴...");
+                isHomingActive = true;
+                homingCounter = 0; // 重置归位进度
             }
         }
     }

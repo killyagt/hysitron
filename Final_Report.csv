@@ -1,4 +1,5 @@
 TestName,X,Y,Hardness(GPa),Modulus(GPa)
-Batch_Point,10.0,10.0,11.49,152.75
-Batch_Point,12.5,10.0,11.57,151.06
-Batch_Point,15.0,12.5,10.35,155.54
+Batch_Point,10.0,10.0,11.3,159.04
+Batch_Point,12.5,10.0,10.56,157.3
+Batch_Point,15.0,12.5,11.79,158.45
+Batch_Point,13.0,14.8,10.75,154.87

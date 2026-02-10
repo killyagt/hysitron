@@ -15,7 +15,7 @@ public class TriboMessage {
         this.length = message.getBytes(StandardCharsets.UTF_8).length;
     }
 
-    // 将 Java 对象转为二进制字节数组（用于发送）
+    // 将 Java 对象转为二进制字节数组（发送）
     public byte[] toBytes() {
         byte[] msgBytes = message.getBytes(StandardCharsets.UTF_8);
         ByteBuffer buffer = ByteBuffer.allocate(12 + msgBytes.length);
@@ -27,7 +27,7 @@ public class TriboMessage {
         return buffer.array();
     }
 
-    // 从二进制字节流解析消息（用于接收）
+    // 从二进制字节流解析消息（接收）
     public static TriboMessage fromBytes(ByteBuffer buffer) {
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         int rw = buffer.getInt();// 前4个字节 读还是写
